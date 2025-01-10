@@ -38,7 +38,7 @@ __global__ void encryptKernel(char* alphabet, char* numbers) {
 
     CudaEncrypt(rawPassword, encryptedPassword);
 
-    printf("Raw: %c%c%c%c -> Encrypted: %s\n", rawPassword[0], rawPassword[1], rawPassword[2], rawPassword[3], encryptedPassword);
+    printf("Encrypted Password: %c%c%c%c -> %s\n", rawPassword[0], rawPassword[1], rawPassword[2], rawPassword[3], encryptedPassword);
 }
 
 // Kernel function for decryption
@@ -61,13 +61,19 @@ int main() {
     cudaMemcpy(gpuNumbers, cpuNumbers, sizeof(cpuNumbers), cudaMemcpyHostToDevice);
 
     // Launch the encryption kernel
-    printf("Encrypting passwords:\n");
+    printf("========================================\n");
+    printf("       Encryption Process Started       \n");
+    printf("========================================\n\n");
+
     encryptKernel<<<dim3(26, 26, 1), dim3(10, 10, 1)>>>(gpuAlphabet, gpuNumbers);
     cudaDeviceSynchronize();
 
     // Decryption section
     char inputEncryptedPassword[11];
-    printf("\nEnter the 10-character encrypted password to decrypt: ");
+    printf("\n========================================\n");
+    printf("    Decryption Process (Enter Password) \n");
+    printf("========================================\n");
+    printf("Enter the 10-character encrypted password to decrypt: ");
     scanf("%10s", inputEncryptedPassword);
 
     // Allocate memory for decryption
@@ -86,7 +92,11 @@ int main() {
     char decryptedPassword[5];
     cudaMemcpy(decryptedPassword, gpuDecryptedPassword, sizeof(decryptedPassword), cudaMemcpyDeviceToHost);
 
-    printf("Decrypted password: %s\n", decryptedPassword);
+    printf("\n========================================\n");
+    printf("     Decrypted Password Result         \n");
+    printf("========================================\n");
+    printf("Decrypted Password: %s\n", decryptedPassword);
+    printf("\n========================================\n");
 
     // Free GPU memory
     cudaFree(gpuAlphabet);
@@ -96,4 +106,3 @@ int main() {
 
     return 0;
 }
-
