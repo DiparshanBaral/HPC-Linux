@@ -2,77 +2,98 @@
 #include <stdlib.h>
 #include <cuda_runtime.h>
 
-// Encryption logic
-__device__ char* CudaCrypt(char* rawPassword) {
-    char* newPassword = (char*)malloc(sizeof(char) * 11);
+// Device-side encryption logic
+__device__ void CudaEncrypt(const char* rawPassword, char* encryptedPassword) {
+    encryptedPassword[0] = rawPassword[0] + 2;
+    encryptedPassword[1] = rawPassword[0] - 2;
+    encryptedPassword[2] = rawPassword[0] + 1;
+    encryptedPassword[3] = rawPassword[1] + 3;
+    encryptedPassword[4] = rawPassword[1] - 3;
+    encryptedPassword[5] = rawPassword[1] - 1;
+    encryptedPassword[6] = rawPassword[2] + 2;
+    encryptedPassword[7] = rawPassword[2] - 2;
+    encryptedPassword[8] = rawPassword[3] + 4;
+    encryptedPassword[9] = rawPassword[3] - 4;
+    encryptedPassword[10] = '\0';
+}
 
-    newPassword[0] = rawPassword[0] + 2;
-    newPassword[1] = rawPassword[0] - 2;
-    newPassword[2] = rawPassword[0] + 1;
-    newPassword[3] = rawPassword[1] + 3;
-    newPassword[4] = rawPassword[1] - 3;
-    newPassword[5] = rawPassword[1] - 1;
-    newPassword[6] = rawPassword[2] + 2;
-    newPassword[7] = rawPassword[2] - 2;
-    newPassword[8] = rawPassword[3] + 4;
-    newPassword[9] = rawPassword[3] - 4;
-    newPassword[10] = '\0';
-
-    for (int i = 0; i < 10; i++) {
-        if (i >= 0 && i < 6) { // Checking all lower case letter limits
-            if (newPassword[i] > 122) {
-                newPassword[i] = (newPassword[i] - 122) + 97;
-            } else if (newPassword[i] < 97) {
-                newPassword[i] = (97 - newPassword[i]) + 97;
-            }
-        } else { // Checking number section
-            if (newPassword[i] > 57) {
-                newPassword[i] = (newPassword[i] - 57) + 48;
-            } else if (newPassword[i] < 48) {
-                newPassword[i] = (48 - newPassword[i]) + 48;
-            }
-        }
-    }
-    return newPassword;
+// Device-side decryption logic
+__device__ void CudaDecrypt(const char* encryptedPassword, char* decryptedPassword) {
+    decryptedPassword[0] = encryptedPassword[0] - 2; // Reverse +2
+    decryptedPassword[1] = encryptedPassword[3] - 3; // Reverse +3
+    decryptedPassword[2] = encryptedPassword[6] - 2; // Reverse +2
+    decryptedPassword[3] = encryptedPassword[8] - 4; // Reverse +4
+    decryptedPassword[4] = '\0'; // Null-terminate the string
 }
 
 // Kernel function for encryption
-__global__ void encryptPassword(char* inputPassword, char* encryptedPassword) {
-    char* result = CudaCrypt(inputPassword);
-    for (int i = 0; i < 11; i++) {
-        encryptedPassword[i] = result[i];
-    }
+__global__ void encryptKernel(char* alphabet, char* numbers) {
+    char rawPassword[4];
+    char encryptedPassword[11];
+
+    rawPassword[0] = alphabet[blockIdx.x];
+    rawPassword[1] = alphabet[blockIdx.y];
+    rawPassword[2] = numbers[threadIdx.x];
+    rawPassword[3] = numbers[threadIdx.y];
+
+    CudaEncrypt(rawPassword, encryptedPassword);
+
+    printf("Raw: %c%c%c%c -> Encrypted: %s\n", rawPassword[0], rawPassword[1], rawPassword[2], rawPassword[3], encryptedPassword);
+}
+
+// Kernel function for decryption
+__global__ void decryptKernel(const char* inputEncryptedPassword, char* decryptedPassword) {
+    CudaDecrypt(inputEncryptedPassword, decryptedPassword);
 }
 
 // Main function
 int main() {
-    char inputPassword[5];
-    printf("Enter a 4-character password to encrypt: ");
-    scanf("%4s", inputPassword);
+    // Alphabet and number set for encryption
+    char cpuAlphabet[26] = {'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'};
+    char cpuNumbers[10] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9'};
 
-    char* gpuInputPassword;
-    char* gpuEncryptedPassword;
-    char encryptedPassword[11];
+    // Allocate and copy alphabet and numbers to the GPU
+    char* gpuAlphabet;
+    char* gpuNumbers;
+    cudaMalloc((void**)&gpuAlphabet, sizeof(cpuAlphabet));
+    cudaMalloc((void**)&gpuNumbers, sizeof(cpuNumbers));
+    cudaMemcpy(gpuAlphabet, cpuAlphabet, sizeof(cpuAlphabet), cudaMemcpyHostToDevice);
+    cudaMemcpy(gpuNumbers, cpuNumbers, sizeof(cpuNumbers), cudaMemcpyHostToDevice);
 
-    // Allocate memory on the GPU
-    cudaMalloc((void**)&gpuInputPassword, sizeof(char) * 5);
-    cudaMalloc((void**)&gpuEncryptedPassword, sizeof(char) * 11);
+    // Launch the encryption kernel
+    printf("Encrypting passwords:\n");
+    encryptKernel<<<dim3(26, 26, 1), dim3(10, 10, 1)>>>(gpuAlphabet, gpuNumbers);
+    cudaDeviceSynchronize();
 
-    // Copy input password to GPU
-    cudaMemcpy(gpuInputPassword, inputPassword, sizeof(char) * 5, cudaMemcpyHostToDevice);
+    // Decryption section
+    char inputEncryptedPassword[11];
+    printf("\nEnter the 10-character encrypted password to decrypt: ");
+    scanf("%10s", inputEncryptedPassword);
 
-    // Launch kernel
-    encryptPassword<<<1, 1>>>(gpuInputPassword, gpuEncryptedPassword);
+    // Allocate memory for decryption
+    char* gpuInputEncryptedPassword;
+    char* gpuDecryptedPassword;
+    cudaMalloc((void**)&gpuInputEncryptedPassword, sizeof(inputEncryptedPassword));
+    cudaMalloc((void**)&gpuDecryptedPassword, sizeof(char) * 5);
 
-    // Copy encrypted password back to CPU
-    cudaMemcpy(encryptedPassword, gpuEncryptedPassword, sizeof(char) * 11, cudaMemcpyDeviceToHost);
+    // Copy the encrypted password to the device
+    cudaMemcpy(gpuInputEncryptedPassword, inputEncryptedPassword, sizeof(inputEncryptedPassword), cudaMemcpyHostToDevice);
 
-    // Print the encrypted password
-    printf("Encrypted password: %s\n", encryptedPassword);
+    // Launch the decryption kernel
+    decryptKernel<<<1, 1>>>(gpuInputEncryptedPassword, gpuDecryptedPassword);
+
+    // Retrieve the decrypted password
+    char decryptedPassword[5];
+    cudaMemcpy(decryptedPassword, gpuDecryptedPassword, sizeof(decryptedPassword), cudaMemcpyDeviceToHost);
+
+    printf("Decrypted password: %s\n", decryptedPassword);
 
     // Free GPU memory
-    cudaFree(gpuInputPassword);
-    cudaFree(gpuEncryptedPassword);
+    cudaFree(gpuAlphabet);
+    cudaFree(gpuNumbers);
+    cudaFree(gpuInputEncryptedPassword);
+    cudaFree(gpuDecryptedPassword);
 
     return 0;
 }
+
