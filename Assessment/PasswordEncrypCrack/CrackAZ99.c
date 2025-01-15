@@ -40,15 +40,6 @@ void crack(char *salt_and_encrypted)
     printf("Starting brute force cracking...\n");
     printf("-----------------------------------------------------\n");
 
-    // Check the number of threads
-#pragma omp parallel
-    {
-#pragma omp single
-        {
-            printf("Number of threads being used: %d\n", omp_get_num_threads());
-        }
-    }
-
 // Parallelize the outermost loop
 #pragma omp parallel for private(y, z, plain, cdata) shared(password_found, count)
     for (x = 'A'; x <= 'Z'; x++)
